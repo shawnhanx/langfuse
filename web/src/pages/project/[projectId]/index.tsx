@@ -7,6 +7,8 @@ import { ScoresTable } from "@/src/features/dashboard/components/ScoresTable";
 import { ModelUsageChart } from "@/src/features/dashboard/components/ModelUsageChart";
 import { TracesAndObservationsTimeSeriesChart } from "@/src/features/dashboard/components/TracesTimeSeriesChart";
 import { UserChart } from "@/src/features/dashboard/components/UserChart";
+import { AgentStats } from "@/src/features/dashboard/components/AgentStats";
+import { Overview } from "@/src/features/dashboard/components/Overview";
 import { TimeRangePicker } from "@/src/components/date-picker";
 import { api } from "@/src/utils/api";
 import { FeedbackButtonWrapper } from "@/src/features/feedback/component/FeedbackButton";
@@ -250,6 +252,22 @@ export default function Dashboard() {
       }}
     >
       <div className="grid w-full grid-cols-1 gap-3 overflow-hidden lg:grid-cols-2 xl:grid-cols-6">
+        <Overview
+          className="col-span-1 xl:col-span-6"
+          projectId={projectId}
+          globalFilterState={[...userFilterState, ...environmentFilter]}
+          fromTimestamp={fromTimestamp}
+          toTimestamp={toTimestamp}
+          isLoading={environmentFilterOptions.isPending}
+        />
+        <AgentStats
+          className="col-span-1 xl:col-span-6"
+          projectId={projectId}
+          globalFilterState={[...userFilterState, ...environmentFilter]}
+          fromTimestamp={fromTimestamp}
+          toTimestamp={toTimestamp}
+          isLoading={environmentFilterOptions.isPending}
+        />
         <TracesBarListChart
           className="col-span-1 xl:col-span-2"
           projectId={projectId}

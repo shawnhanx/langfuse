@@ -1,0 +1,67 @@
+# 实例 A 配置更新
+# 用于修改现有 langfuse-web 和 langfuse-worker 的配置
+# 添加 S3 PREFIX 和修改 ClickHouse DB（可选）
+
+---
+# 使用 kubectl patch 或直接编辑 deployment
+# kubectl patch deployment langfuse-web -n langfuse --patch-file 01-patch-instance-a.yaml
+
+# 以下是需要添加/修改的环境变量：
+
+# 方式 1: 使用 kubectl set env
+# kubectl set env deployment/langfuse-web -n langfuse \
+#   LANGFUSE_S3_EVENT_UPLOAD_PREFIX=instance-a/events/ \
+#   LANGFUSE_S3_MEDIA_UPLOAD_PREFIX=instance-a/media/ \
+#   LANGFUSE_S3_BATCH_EXPORT_PREFIX=instance-a/exports/ \
+#   CLICKHOUSE_DB=langfuse_a
+
+# kubectl set env deployment/langfuse-worker -n langfuse \
+#   LANGFUSE_S3_EVENT_UPLOAD_PREFIX=instance-a/events/ \
+#   LANGFUSE_S3_MEDIA_UPLOAD_PREFIX=instance-a/media/ \
+#   LANGFUSE_S3_BATCH_EXPORT_PREFIX=instance-a/exports/ \
+#   CLICKHOUSE_DB=langfuse_a
+
+# 方式 2: 使用 strategic merge patch
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langfuse-web
+  namespace: langfuse
+spec:
+  template:
+    spec:
+      containers:
+      - name: langfuse-web
+        env:
+        # S3 PREFIX 配置（隔离存储路径）
+        - name: LANGFUSE_S3_EVENT_UPLOAD_PREFIX
+          value: "instance-a/events/"
+        - name: LANGFUSE_S3_MEDIA_UPLOAD_PREFIX
+          value: "instance-a/media/"
+        - name: LANGFUSE_S3_BATCH_EXPORT_PREFIX
+          value: "instance-a/exports/"
+        # ClickHouse DB（可选，如果要从 default 改为独立数据库）
+        # - name: CLICKHOUSE_DB
+        #   value: "langfuse_a"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langfuse-worker
+  namespace: langfuse
+spec:
+  template:
+    spec:
+      containers:
+      - name: langfuse-worker
+        env:
+        # S3 PREFIX 配置（隔离存储路径）
+        - name: LANGFUSE_S3_EVENT_UPLOAD_PREFIX
+          value: "instance-a/events/"
+        - name: LANGFUSE_S3_MEDIA_UPLOAD_PREFIX
+          value: "instance-a/media/"
+        - name: LANGFUSE_S3_BATCH_EXPORT_PREFIX
+          value: "instance-a/exports/"
+        # ClickHouse DB（可选，如果要从 default 改为独立数据库）
+        # - name: CLICKHOUSE_DB
+        #   value: "langfuse_a"

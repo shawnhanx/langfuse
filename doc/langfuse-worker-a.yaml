@@ -1,0 +1,162 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langfuse-worker-a
+  namespace: langfuse
+  labels:
+    app.kubernetes.io/name: langfuse
+    app.kubernetes.io/instance: langfuse-a
+    app.kubernetes.io/component: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: langfuse
+      app.kubernetes.io/instance: langfuse-a
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: langfuse
+        app.kubernetes.io/instance: langfuse-a
+        app.kubernetes.io/component: worker
+    spec:
+      containers:
+        - name: langfuse-worker
+          image: registry.baidubce.com/cce-plugin-dev/langfuse-worker:202601092
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3030
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: LANGFUSE_LOG_LEVEL
+              value: "info"
+            - name: LANGFUSE_LOG_FORMAT
+              value: "text"
+            - name: SALT
+              value: "2e2e66ddf3a53fa0b5597a6a2ca4ea3c3e015d810e0e786c28067be22eebaad1"
+            - name: TELEMETRY_ENABLED
+              value: "true"
+            - name: AUTH_DISABLE_SIGNUP
+              value: "false"
+            - name: ENABLE_EXPERIMENTAL_FEATURES
+              value: "false"
+            - name: NEXTAUTH_URL
+              value: "http://localhost:3001"
+            - name: NEXTAUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: langfuse-a-secrets
+                  key: nextauth-secret
+            - name: DATABASE_HOST
+              value: "172.16.1.48"
+            - name: DATABASE_USERNAME
+              value: "langfuse"
+            - name: DATABASE_PASSWORD
+              value: "Y2NlJDEyMzQ="
+            - name: DATABASE_NAME
+              value: "langfuse_a"
+            - name: LANGFUSE_AUTO_POSTGRES_MIGRATION_DISABLED
+              value: "false"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: langfuse-a-secrets
+                  key: redis-password
+            - name: REDIS_TLS_ENABLED
+              value: "false"
+            - name: REDIS_CONNECTION_STRING
+              value: "redis://default:$(REDIS_PASSWORD)@172.16.1.47:6379/0"
+            - name: CLICKHOUSE_MIGRATION_URL
+              value: "clickhouse://172.16.1.34:9000"
+            - name: CLICKHOUSE_MIGRATION_SSL
+              value: "false"
+            - name: CLICKHOUSE_URL
+              value: "http://172.16.1.34:8123"
+            - name: CLICKHOUSE_DB
+              value: "langfuse_a"
+            - name: CLICKHOUSE_USER
+              value: "default"
+            - name: CLICKHOUSE_PASSWORD
+              value: "Y2NlQDEyMzQ="
+            - name: LANGFUSE_AUTO_CLICKHOUSE_MIGRATION_DISABLED
+              value: "false"
+            - name: LANGFUSE_S3_EVENT_UPLOAD_BUCKET
+              value: "langfuse"
+            - name: LANGFUSE_S3_EVENT_UPLOAD_REGION
+              value: "auto"
+            - name: LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT
+              value: "https://s3.bj.bcebos.com"
+            - name: LANGFUSE_S3_EVENT_EXPORT_ACCESS_KEY_ID
+              value: "<YOUR_BOS_ACCESS_KEY>"
+            - name: LANGFUSE_S3_EVENT_EXPORT_SECRET_ACCESS_KEY
+              value: "<YOUR_BOS_SECRET_KEY>"
+            - name: LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE
+              value: "true"
+            - name: LANGFUSE_S3_EVENT_UPLOAD_PREFIX
+              value: "instance-a/events/"
+            - name: LANGFUSE_S3_BATCH_EXPORT_ENABLED
+              value: "true"
+            - name: LANGFUSE_S3_BATCH_EXPORT_BUCKET
+              value: "langfuse"
+            - name: LANGFUSE_S3_BATCH_EXPORT_REGION
+              value: "auto"
+            - name: LANGFUSE_S3_BATCH_EXPORT_ENDPOINT
+              value: "https://s3.bj.bcebos.com"
+            - name: LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID
+              value: "<YOUR_BOS_ACCESS_KEY>"
+            - name: LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY
+              value: "<YOUR_BOS_SECRET_KEY>"
+            - name: LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE
+              value: "true"
+            - name: LANGFUSE_S3_BATCH_EXPORT_PREFIX
+              value: "instance-a/exports/"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_BUCKET
+              value: "langfuse"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_REGION
+              value: "auto"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT
+              value: "https://s3.bj.bcebos.com"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID
+              value: "<YOUR_BOS_ACCESS_KEY>"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY
+              value: "<YOUR_BOS_SECRET_KEY>"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE
+              value: "true"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_MAX_CONTENT_LENGTH
+              value: "1e+09"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_DOWNLOAD_URL_EXPIRY_SECONDS
+              value: "3600"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_PREFIX
+              value: "instance-a/media/"
+            - name: LANGFUSE_S3_CONCURRENT_READS
+              value: "50"
+            - name: LANGFUSE_S3_CONCURRENT_WRITES
+              value: "50"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3030
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3030
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3

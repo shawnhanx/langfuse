@@ -34,6 +34,7 @@ export type TableName =
   | "scores"
   | "prompts"
   | "dashboard"
+  | "agents"
   | "widgets"
   | "users"
   | "eval_configs"

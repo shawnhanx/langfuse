@@ -1,0 +1,241 @@
+# 实例 B 的 Langfuse Web 部署
+# 使用独立的数据库配置，共享 PostgreSQL、ClickHouse、S3
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: langfuse-b-secrets
+  namespace: langfuse
+  labels:
+    app.kubernetes.io/name: langfuse
+    app.kubernetes.io/instance: langfuse-b
+    app.kubernetes.io/component: web
+type: Opaque
+stringData:
+  # PostgreSQL 密码（实例 B 专用数据库）
+  # 自动生成的安全密码（无特殊字符，避免 URL 转义问题）
+  database-password: "164b984bcc748c7369651c13e22ef34795a46f59fc6bfff0"
+  # NextAuth Secret（自动生成）
+  # openssl rand -base64 32
+  nextauth-secret: "Ck/ABtOlUoda25yDLtAzoSiozQw4vCHpI74jM0JBxZU="
+  # Redis 密码（与 02-redis-b.yaml 中的密码一致）
+  redis-password: "55db95f5f50d9f30f8bc6fe868998ea1185dac93f3f9f8e9"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: langfuse-web-b
+  namespace: langfuse
+  labels:
+    app.kubernetes.io/name: langfuse
+    app.kubernetes.io/instance: langfuse-b
+    app.kubernetes.io/component: web
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 3000
+    targetPort: 3000
+    protocol: TCP
+  selector:
+    app.kubernetes.io/name: langfuse
+    app.kubernetes.io/instance: langfuse-b
+    app.kubernetes.io/component: web
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langfuse-web-b
+  namespace: langfuse
+  labels:
+    app.kubernetes.io/name: langfuse
+    app.kubernetes.io/instance: langfuse-b
+    app.kubernetes.io/component: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: langfuse
+      app.kubernetes.io/instance: langfuse-b
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: langfuse
+        app.kubernetes.io/instance: langfuse-b
+        app.kubernetes.io/component: web
+    spec:
+      containers:
+      - name: langfuse-web
+        # 使用与实例 A 相同的镜像
+        image: registry.baidubce.com/cce-plugin-dev/langfuse:202601092
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 3000
+          protocol: TCP
+        env:
+        # ===== 基础配置 =====
+        - name: NODE_ENV
+          value: "production"
+        - name: LANGFUSE_LOG_LEVEL
+          value: "info"
+        - name: LANGFUSE_LOG_FORMAT
+          value: "text"
+        - name: SALT
+          # 自动生成的 SALT
+          value: "2e2e66ddf3a53fa0b5597a6a2ca4ea3c3e015d810e0e786c28067be22eebaad1"
+        - name: TELEMETRY_ENABLED
+          value: "true"
+        - name: AUTH_DISABLE_SIGNUP
+          value: "false"
+        - name: ENABLE_EXPERIMENTAL_FEATURES
+          value: "false"
+        - name: PORT
+          value: "3000"
+        - name: HOSTNAME
+          value: "0.0.0.0"
+
+        # ===== NextAuth 配置 =====
+        # 重要：必须使用实例 B 的实际访问 URL，避免与实例 A 的 Cookie 冲突
+        - name: NEXTAUTH_URL
+          value: "http://localhost:3001"
+        - name: NEXTAUTH_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: langfuse-b-secrets
+              key: nextauth-secret
+
+        # ===== PostgreSQL 配置（实例 B 专用数据库）=====
+        - name: DATABASE_HOST
+          value: "langfuse-postgresql"
+        - name: DATABASE_USERNAME
+          value: "langfuse"
+        - name: DATABASE_PASSWORD
+          value: "ecOd+GYIM9b7u2h+mRtD8w=="
+        - name: DATABASE_NAME
+          # 实例 B 使用独立的数据库
+          value: "langfuse_b"
+        - name: LANGFUSE_AUTO_POSTGRES_MIGRATION_DISABLED
+          value: "false"
+
+        # ===== Redis 配置（实例 B 独立 Redis）=====
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: langfuse-b-secrets
+              key: redis-password
+        - name: REDIS_TLS_ENABLED
+          value: "false"
+        - name: REDIS_CONNECTION_STRING
+          value: "redis://default:$(REDIS_PASSWORD)@langfuse-redis-b-primary:6379/0"
+
+        # ===== ClickHouse 配置（共享 ClickHouse，独立数据库）=====
+        - name: CLICKHOUSE_MIGRATION_URL
+          value: "clickhouse://langfuse-clickhouse:9000"
+        - name: CLICKHOUSE_MIGRATION_SSL
+          value: "false"
+        - name: CLICKHOUSE_URL
+          value: "http://langfuse-clickhouse:8123"
+        - name: CLICKHOUSE_DB
+          # 实例 B 使用独立的 ClickHouse 数据库
+          value: "langfuse_b"
+        - name: CLICKHOUSE_USER
+          value: "default"
+        - name: CLICKHOUSE_PASSWORD
+          # 使用与实例 A 相同的 ClickHouse 密码
+          value: "mlbvhiUlXSnEicXgsrVUQ=="
+        - name: LANGFUSE_AUTO_CLICKHOUSE_MIGRATION_DISABLED
+          value: "false"
+
+        # ===== S3 Event Upload 配置（共享 S3，独立前缀）=====
+        - name: LANGFUSE_S3_EVENT_UPLOAD_BUCKET
+          value: "langfuse"
+        - name: LANGFUSE_S3_EVENT_UPLOAD_REGION
+          value: "auto"
+        - name: LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT
+          value: "http://langfuse-s3:9000"
+        - name: LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID
+          value: "minio"
+        - name: LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY
+          value: "jCvsaqfUOA=="
+        - name: LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE
+          value: "true"
+        # 实例 B 专用前缀
+        - name: LANGFUSE_S3_EVENT_UPLOAD_PREFIX
+          value: "instance-b/events/"
+
+        # ===== S3 Batch Export 配置 =====
+        - name: LANGFUSE_S3_BATCH_EXPORT_ENABLED
+          value: "true"
+        - name: LANGFUSE_S3_BATCH_EXPORT_BUCKET
+          value: "langfuse"
+        - name: LANGFUSE_S3_BATCH_EXPORT_REGION
+          value: "auto"
+        - name: LANGFUSE_S3_BATCH_EXPORT_ENDPOINT
+          value: "http://langfuse-s3:9000"
+        - name: LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID
+          value: "minio"
+        - name: LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY
+          value: "jCvsaqfUOA=="
+        - name: LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE
+          value: "true"
+        # 实例 B 专用前缀
+        - name: LANGFUSE_S3_BATCH_EXPORT_PREFIX
+          value: "instance-b/exports/"
+
+        # ===== S3 Media Upload 配置 =====
+        - name: LANGFUSE_S3_MEDIA_UPLOAD_BUCKET
+          value: "langfuse"
+        - name: LANGFUSE_S3_MEDIA_UPLOAD_REGION
+          value: "auto"
+        - name: LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT
+          value: "http://langfuse-s3:9000"
+        - name: LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID
+          value: "minio"
+        - name: LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY
+          value: "jCvsaqfUOA=="
+        - name: LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE
+          value: "true"
+        - name: LANGFUSE_S3_MEDIA_UPLOAD_MAX_CONTENT_LENGTH
+          value: "1e+09"
+        - name: LANGFUSE_S3_MEDIA_UPLOAD_DOWNLOAD_URL_EXPIRY_SECONDS
+          value: "3600"
+        # 实例 B 专用前缀
+        - name: LANGFUSE_S3_MEDIA_UPLOAD_PREFIX
+          value: "instance-b/media/"
+
+        # ===== S3 性能配置 =====
+        - name: LANGFUSE_S3_CONCURRENT_READS
+          value: "50"
+        - name: LANGFUSE_S3_CONCURRENT_WRITES
+          value: "50"
+
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+
+        livenessProbe:
+          httpGet:
+            path: /api/public/health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /api/public/health
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3

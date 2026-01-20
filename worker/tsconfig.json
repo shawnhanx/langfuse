@@ -10,8 +10,9 @@
     "target": "es2024",
     "types": ["node"],
     "downlevelIteration": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "jsx": "react"
   },
   "include": ["."],
-  "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "insert-tool-error-data.ts"]
 }

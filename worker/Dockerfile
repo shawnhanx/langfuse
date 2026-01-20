@@ -1,6 +1,9 @@
 # The node alpine image is available here: https://github.com/nodejs/docker-node
 FROM --platform=${TARGETPLATFORM:-linux/amd64} node:24-alpine AS alpine
 
+# Use Alibaba Cloud mirror for Alpine packages (China)
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
+
 # It's important to update the index before installing packages to ensure you're getting the latest versions.
 # Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
 RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libc6-compat busybox ssl_client
@@ -11,6 +14,9 @@ ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable
 RUN corepack prepare pnpm@9.5.0 --activate
+# Use Chinese npm mirrors for faster downloads (方案2)
+RUN npm config set registry https://registry.npmmirror.com && \
+    pnpm config set registry https://registry.npmmirror.com
 
 
 FROM --platform=${TARGETPLATFORM:-linux/amd64} base AS pruner
@@ -33,6 +39,10 @@ COPY --from=pruner /app/out/json/ .
 
 RUN pnpm install --frozen-lockfile
 
+# Add Prisma timeout and retry config (方案1 + 方案2)
+ENV PRISMA_QUERY_ENGINE_LIBRARY_TIMEOUT=600000
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+
 # pass public variables in build step
 ARG NEXT_PUBLIC_LANGFUSE_CLOUD_REGION
 ARG NEXT_PUBLIC_DEMO_ORG_ID
@@ -42,6 +52,11 @@ ARG NEXT_PUBLIC_POSTHOG_HOST
 
 # Copy source code of isolated subworkspace
 COPY --from=pruner /app/out/full/ .
+
+# Run db:generate with retry mechanism for network resilience
+RUN pnpm run db:generate || \
+  (echo "Retrying Prisma generation in 5s..." && sleep 5 && pnpm run db:generate) || \
+  (echo "Final retry in 10s..." && sleep 10 && pnpm run db:generate)
 
 RUN turbo run build --filter=worker...
 
