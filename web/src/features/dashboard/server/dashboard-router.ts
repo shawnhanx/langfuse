@@ -100,45 +100,55 @@ export const dashboardRouter = createTRPCRouter({
       }),
     )
     .query(async ({ input }) => {
-      const [from, to] = extractFromAndToTimestampsFromFilter(input.filter);
+      try {
+        const [from, to] = extractFromAndToTimestampsFromFilter(input.filter);
 
-      if (from.value > to.value) {
+        if (from.value > to.value) {
+          logger.error(
+            `from > to, returning empty result: from=${from}, to=${to}`,
+          );
+          return [];
+        }
+
+        switch (input.queryName) {
+          case "score-aggregate":
+            const scores = await getScoreAggregate(
+              input.projectId,
+              input.filter ?? [],
+            );
+            return scores.map((row) => ({
+              scoreName: row.name,
+              scoreSource: row.source,
+              scoreDataType: row.data_type,
+              avgValue: row.avg_value,
+              countScoreId: Number(row.count),
+            })) as DatabaseRow[];
+          case "observations-usage-by-type-timeseries":
+            const rowsObsType = await getObservationUsageByTypeByTime(
+              input.projectId,
+              input.filter ?? [],
+            );
+            return rowsObsType as DatabaseRow[];
+          case "observations-cost-by-type-timeseries":
+            const rowsObsCostByType = await getObservationCostByTypeByTime(
+              input.projectId,
+              input.filter ?? [],
+            );
+            return rowsObsCostByType as DatabaseRow[];
+          default:
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Query not found",
+            });
+        }
+      } catch (error) {
+        // Log the actual error for debugging
         logger.error(
-          `from > to, returning empty result: from=${from}, to=${to}`,
+          `Error in dashboard.chart query: ${input.queryName}`,
+          error,
         );
+        // Return empty array instead of throwing to prevent page crash
         return [];
-      }
-
-      switch (input.queryName) {
-        case "score-aggregate":
-          const scores = await getScoreAggregate(
-            input.projectId,
-            input.filter ?? [],
-          );
-          return scores.map((row) => ({
-            scoreName: row.name,
-            scoreSource: row.source,
-            scoreDataType: row.data_type,
-            avgValue: row.avg_value,
-            countScoreId: Number(row.count),
-          })) as DatabaseRow[];
-        case "observations-usage-by-type-timeseries":
-          const rowsObsType = await getObservationUsageByTypeByTime(
-            input.projectId,
-            input.filter ?? [],
-          );
-          return rowsObsType as DatabaseRow[];
-        case "observations-cost-by-type-timeseries":
-          const rowsObsCostByType = await getObservationCostByTypeByTime(
-            input.projectId,
-            input.filter ?? [],
-          );
-          return rowsObsCostByType as DatabaseRow[];
-        default:
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Query not found",
-          });
       }
     }),
   scoreHistogram: protectedProjectProcedure

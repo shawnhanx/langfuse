@@ -1,0 +1,231 @@
+# 实例 B 的 Redis 部署
+# 独立的 Redis 实例，用于 Langfuse 实例 B
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: langfuse-redis-b
+  namespace: langfuse
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/instance: langfuse-b
+    app.kubernetes.io/component: primary
+type: Opaque
+data:
+  # 密码: 55db95f5f50d9f30f8bc6fe868998ea1185dac93f3f9f8e9 (base64 编码)
+  # echo -n '55db95f5f50d9f30f8bc6fe868998ea1185dac93f3f9f8e9' | base64
+  valkey-password: NTVkYjk1ZjVmNTBkOWYzMGY4YmM2ZmU4Njg5OThlYTExODVkYWM5M2YzZjlmOGU5
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: langfuse-redis-b-configuration
+  namespace: langfuse
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/instance: langfuse-b
+data:
+  redis.conf: |-
+    # Redis configuration for instance B
+    bind 0.0.0.0
+    port 6379
+    tcp-backlog 511
+    timeout 0
+    tcp-keepalive 300
+    daemonize no
+    supervised no
+    pidfile /var/run/redis_6379.pid
+    loglevel notice
+    databases 16
+    always-show-logo yes
+    save 900 1
+    save 300 10
+    save 60 10000
+    stop-writes-on-bgsave-error yes
+    rdbcompression yes
+    rdbchecksum yes
+    dbfilename dump.rdb
+    dir /data
+    replica-serve-stale-data yes
+    replica-read-only yes
+    repl-diskless-sync no
+    repl-diskless-sync-delay 5
+    repl-disable-tcp-nodelay no
+    replica-priority 100
+    maxmemory-policy noeviction
+    lazyfree-lazy-eviction no
+    lazyfree-lazy-expire no
+    lazyfree-lazy-server-del no
+    replica-lazy-flush no
+    appendonly no
+    appendfilename "appendonly.aof"
+    appendfsync everysec
+    no-appendfsync-on-rewrite no
+    auto-aof-rewrite-percentage 100
+    auto-aof-rewrite-min-size 64mb
+    aof-load-truncated yes
+    aof-use-rdb-preamble yes
+    lua-time-limit 5000
+    slowlog-log-slower-than 10000
+    slowlog-max-len 128
+    latency-monitor-threshold 0
+    notify-keyspace-events ""
+    hash-max-ziplist-entries 512
+    hash-max-ziplist-value 64
+    list-max-ziplist-size -2
+    list-compress-depth 0
+    set-max-intset-entries 512
+    zset-max-ziplist-entries 128
+    zset-max-ziplist-value 64
+    hll-sparse-max-bytes 3000
+    stream-node-max-bytes 4096
+    stream-node-max-entries 100
+    activerehashing yes
+    client-output-buffer-limit normal 0 0 0
+    client-output-buffer-limit replica 256mb 64mb 60
+    client-output-buffer-limit pubsub 32mb 8mb 60
+    hz 10
+    dynamic-hz yes
+    aof-rewrite-incremental-fsync yes
+    rdb-save-incremental-fsync yes
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: langfuse-redis-b-primary
+  namespace: langfuse
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/instance: langfuse-b
+    app.kubernetes.io/component: primary
+spec:
+  type: ClusterIP
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: redis
+    protocol: TCP
+  selector:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/instance: langfuse-b
+    app.kubernetes.io/component: primary
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: langfuse-redis-b-headless
+  namespace: langfuse
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/instance: langfuse-b
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: redis
+  selector:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/instance: langfuse-b
+    app.kubernetes.io/component: primary
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: langfuse-redis-b-primary
+  namespace: langfuse
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/instance: langfuse-b
+    app.kubernetes.io/component: primary
+spec:
+  replicas: 1
+  serviceName: langfuse-redis-b-headless
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+      app.kubernetes.io/instance: langfuse-b
+      app.kubernetes.io/component: primary
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redis
+        app.kubernetes.io/instance: langfuse-b
+        app.kubernetes.io/component: primary
+    spec:
+      containers:
+      - name: valkey
+        # 使用与现有 Redis 相同的镜像
+        image: docker.io/bitnamilegacy/valkey:8.0.2-debian-12-r2
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/bash
+        args:
+        - -c
+        - |
+          valkey-server --requirepass "$VALKEY_PASSWORD" --maxmemory-policy noeviction
+        env:
+        - name: VALKEY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: langfuse-redis-b
+              key: valkey-password
+        ports:
+        - name: redis
+          containerPort: 6379
+          protocol: TCP
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - valkey-cli -a "$VALKEY_PASSWORD" ping | grep PONG
+          initialDelaySeconds: 20
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 5
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - valkey-cli -a "$VALKEY_PASSWORD" ping | grep PONG
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: config
+          mountPath: /etc/redis
+      volumes:
+      - name: config
+        configMap:
+          name: langfuse-redis-b-configuration
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+      labels:
+        app.kubernetes.io/name: redis
+        app.kubernetes.io/instance: langfuse-b
+        app.kubernetes.io/component: primary
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1Gi

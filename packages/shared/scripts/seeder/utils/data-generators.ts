@@ -73,6 +73,43 @@ export class DataGenerator {
   }
 
   /**
+   * Generates agent tags with -agent suffix for testing
+   * All traces will have at least one agent tag
+   */
+  private generateAgentTags(): string[] {
+    const agentTypes = [
+      "cce-agent",
+      "cfc-agent",
+      "ccr-agent",
+      "mcp-agent",
+      "langgraph-agent",
+      "autogen-agent",
+      "crewai-agent",
+    ];
+    const selectedAgent = this.randomElement(agentTypes);
+
+    // All traces get agent tag + optional additional tags
+    const tags = [selectedAgent];
+
+    // 50% chance to add "demo" tag
+    if (this.randomBoolean(0.5)) {
+      tags.push("demo");
+    }
+
+    // 40% chance to add "mcp" tag
+    if (this.randomBoolean(0.4)) {
+      tags.push("mcp");
+    }
+
+    // 30% chance to add "production" tag
+    if (this.randomBoolean(0.3)) {
+      tags.push("production");
+    }
+
+    return tags;
+  }
+
+  /**
    * Creates dataset run items for dataset runs.
    * Use for: Dataset experiment scenarios.
    */
@@ -278,8 +315,60 @@ export class DataGenerator {
     count: number,
   ): TraceRecordInsertType[] {
     const traces: TraceRecordInsertType[] = [];
+    // Map to ensure consistent agent tags per session
+    const sessionAgentMap = new Map<string, string>();
 
     for (let i = 0; i < count; i++) {
+      const sessionId = this.randomBoolean(0.3)
+        ? `session_${this.randomInt(1, 100)}`
+        : undefined;
+
+      // Determine agent tag for this session
+      let agentTag: string;
+      if (sessionId) {
+        if (!sessionAgentMap.has(sessionId)) {
+          // Generate a new agent tag for this session
+          const agentTypes = [
+            "cce-agent",
+            "cfc-agent",
+            "ccr-agent",
+            "mcp-agent",
+            "langgraph-agent",
+            "autogen-agent",
+            "crewai-agent",
+          ];
+          agentTag = this.randomElement(agentTypes);
+          sessionAgentMap.set(sessionId, agentTag);
+        } else {
+          // Use existing agent tag for this session
+          agentTag = sessionAgentMap.get(sessionId)!;
+        }
+      } else {
+        // No session, generate random agent tag
+        const agentTypes = [
+          "cce-agent",
+          "cfc-agent",
+          "ccr-agent",
+          "mcp-agent",
+          "langgraph-agent",
+          "autogen-agent",
+          "crewai-agent",
+        ];
+        agentTag = this.randomElement(agentTypes);
+      }
+
+      // Build tags with the determined agent tag
+      const tags = [agentTag];
+      if (this.randomBoolean(0.5)) {
+        tags.push("demo");
+      }
+      if (this.randomBoolean(0.4)) {
+        tags.push("mcp");
+      }
+      if (this.randomBoolean(0.3)) {
+        tags.push("production");
+      }
+
       const trace = createTrace({
         id: `trace-synthetic-${i}-${projectId.slice(-8)}`,
         project_id: projectId,
@@ -289,12 +378,10 @@ export class DataGenerator {
         user_id: this.randomBoolean(0.3)
           ? `user_${this.randomInt(1, 1000)}`
           : null,
-        session_id: this.randomBoolean(0.3)
-          ? `session_${this.randomInt(1, 100)}`
-          : undefined,
+        session_id: sessionId,
         environment: "default",
         metadata: { generated: "synthetic" },
-        tags: this.randomBoolean(0.3) ? ["production", "ai-agent"] : [],
+        tags: tags,
         public: this.randomBoolean(0.8),
         bookmarked: this.randomBoolean(0.1),
         release: this.randomBoolean(0.4)
@@ -634,7 +721,7 @@ export class DataGenerator {
         : undefined,
       environment: "default",
       metadata: { workflowType: "comprehensive-ai", purpose: "demonstration" },
-      tags: ["ai-agent", "multi-step", "comprehensive"],
+      tags: [...this.generateAgentTags(), "multi-step", "comprehensive"],
       public: true,
       bookmarked: this.randomBoolean(0.2),
     });
@@ -892,7 +979,7 @@ export class DataGenerator {
             : null,
           environment: "langfuse-evaluation",
           metadata: { purpose: "evaluation" },
-          tags: this.randomBoolean(0.3) ? ["production", "ai-agent"] : [],
+          tags: this.generateAgentTags(),
           public: this.randomBoolean(0.8),
           bookmarked: this.randomBoolean(0.1),
           release: this.randomBoolean(0.4)
@@ -971,6 +1058,18 @@ export class DataGenerator {
     observations: ObservationRecordInsertType[];
     scores: ScoreRecordInsertType[];
   } {
+    // Generate a single agent tag for all traces in this session
+    const agentTypes = [
+      "cce-agent",
+      "cfc-agent",
+      "ccr-agent",
+      "mcp-agent",
+      "langgraph-agent",
+      "autogen-agent",
+      "crewai-agent",
+    ];
+    const sessionAgentTag = this.randomElement(agentTypes);
+
     // Domain: Art museum membership support (non-tech)
     const dialogues = [
       {
@@ -1024,6 +1123,111 @@ export class DataGenerator {
         user: "Perfect.",
         assistant: "You're all set. Have a great day!",
       },
+      // Tool error scenarios
+      {
+        user: "Can you check if there's a membership under email john@example.com?",
+        assistant: "Let me look that up for you.",
+        tool: {
+          name: "database.query",
+          input: { email: "john@example.com", query: "find_membership" },
+          error: "Connection timeout: Database not responding",
+        },
+      },
+      {
+        user: "Is it working?",
+        assistant:
+          "I'm having trouble accessing the database. Let me try a different approach.",
+      },
+      {
+        user: "Can you search for member benefits online?",
+        assistant: "Sure, let me search the website for that information.",
+        tool: {
+          name: "web.search",
+          input: { query: "member benefits 2025", site: "museum.org" },
+          error: "Access denied: 403 Forbidden - Rate limit exceeded",
+        },
+      },
+      {
+        user: "What happened?",
+        assistant:
+          "I apologize, I'm unable to access the website due to rate limiting.",
+      },
+      {
+        user: "Can you send a confirmation email to this address?",
+        assistant: "I'll send that email right away.",
+        tool: {
+          name: "email.send",
+          input: {
+            to: "member@example.com",
+            subject: "Membership confirmation",
+          },
+          error: "SMTP connection failed: Timeout after 30s",
+        },
+      },
+      // Additional tool error scenarios
+      {
+        user: "I need to update my payment information.",
+        assistant: "I'll help you update that.",
+        tool: {
+          name: "payment_gateway.update",
+          input: { memberId: "CAM-48291", paymentMethod: "credit_card" },
+          error: "Payment gateway unavailable: 503 Service Unavailable",
+        },
+      },
+      {
+        user: "Can you look up my ticket history?",
+        assistant: "Let me search for your tickets.",
+        tool: {
+          name: "crm.search",
+          input: { memberId: "CAM-48291", query: "ticket_history" },
+          error: "API rate limit exceeded: 429 Too Many Requests",
+        },
+      },
+      {
+        user: "Can you check if there are any upcoming events?",
+        assistant: "I'll check the events calendar.",
+        tool: {
+          name: "calendar.fetch",
+          input: { startDate: "2025-09-01", endDate: "2025-09-30" },
+          error: "Calendar service timeout: Request timed out after 45s",
+        },
+      },
+      {
+        user: "I'd like to reserve tickets for the special exhibition.",
+        assistant: "Let me process that reservation for you.",
+        tool: {
+          name: "ticket.reserve",
+          input: {
+            memberId: "CAM-48291",
+            exhibitionId: "special-001",
+            quantity: 2,
+          },
+          error:
+            "Insufficient inventory: No tickets available for requested date",
+        },
+      },
+      {
+        user: "Can you verify my membership status?",
+        assistant: "I'll verify your status right away.",
+        tool: {
+          name: "membership.verify",
+          input: { memberId: "CAM-48291", check: "status" },
+          error: "Invalid member ID: Membership not found in database",
+        },
+      },
+      {
+        user: "I need to request a refund for a recent purchase.",
+        assistant: "I'll process that refund request.",
+        tool: {
+          name: "refund.request",
+          input: {
+            transactionId: "TXN-12345",
+            amount: 50.0,
+            reason: "duplicate",
+          },
+          error: "Refund policy violation: Purchase older than 30 days",
+        },
+      },
     ];
 
     const now = Date.now();
@@ -1039,7 +1243,7 @@ export class DataGenerator {
       environment: "default",
       public: false,
       bookmarked: false,
-      tags: ["support", "chat", "session"],
+      tags: [sessionAgentTag, "support", "chat", "session"],
       input: JSON.stringify(
         d.tool
           ? {
@@ -1049,7 +1253,9 @@ export class DataGenerator {
                 {
                   role: "tool",
                   name: d.tool.name,
-                  content: d.tool.output,
+                  ...(d.tool.error
+                    ? { error: d.tool.error }
+                    : { content: d.tool.output }),
                 },
               ],
             }
@@ -1093,7 +1299,9 @@ export class DataGenerator {
                 ? {
                     role: "tool",
                     name: d.tool.name,
-                    content: d.tool.output,
+                    ...(d.tool.error
+                      ? { error: d.tool.error }
+                      : { content: d.tool.output }),
                   }
                 : undefined,
             ].filter(Boolean),
@@ -1156,11 +1364,11 @@ export class DataGenerator {
           end_time: start - 5,
           name: d.tool.name,
           metadata: {},
-          level: "DEFAULT",
-          status_message: null,
+          level: d.tool.error ? "ERROR" : "DEFAULT",
+          status_message: d.tool.error || null,
           version: null,
           input: JSON.stringify(d.tool.input),
-          output: JSON.stringify(d.tool.output),
+          output: d.tool.error ? null : JSON.stringify(d.tool.output),
           provided_model_name: null,
           internal_model_id: null,
           model_parameters: null,
